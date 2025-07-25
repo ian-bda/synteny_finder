@@ -1,6 +1,6 @@
 # Conserved Synteny Detection Pipeline
 
-This Python script automates the detection of **conserved synteny** between multiple species using their **GFF3 annotations**, **CDS FASTA files**, and a **chromosome mapping file**. It leverages the [JCVI toolkit](https://github.com/tanghaibao/jcvi) and [MCscan-python version](https://github.com/tanghaibao/jcvi/wiki/Mcscan-(python-version)) to perform pairwise orthology detection and generates filtered synteny tables for defined chromosomes.
+This Python script automates the detection of **conserved synteny** between multiple species using their **GFF3 annotations**, **CDS FASTA files**, from [Ensembl](https://useast.ensembl.org/index.html) and a **chromosome mapping file**. It leverages the [JCVI toolkit](https://github.com/tanghaibao/jcvi) and [MCscan-python version](https://github.com/tanghaibao/jcvi/wiki/Mcscan-(python-version)) to perform pairwise orthology detection and generates filtered synteny tables for defined chromosomes.
 
 ## Directory Structure
 
@@ -23,17 +23,17 @@ Place the following files in the script's parent directory:
 
 ### 1. GFF Files
 
-* Located in: `./gff_files/`
+* Place in a folder called: `./gff_files/`
 * Format: `.gff3` or `.gff3.gz`
 * Filename format: `{species}.gff3(.gz)`
 
 ### 2. CDS Files
 
-* Located in: `./cds_files/`
+* Place in a folder called: `./cds_files/`
 * Format: `.fa` or `.fa.gz`
 * Filename should include the species name to match GFF
 
-### 3. Chromosome Mapping
+### 3. Chromosome Mapping - you make this 
 
 * File: `chromosome_map.json`
 * Format:
@@ -46,7 +46,7 @@ Place the following files in the script's parent directory:
 }
 ```
 
-This dictionary is used to filter orthologous pairs that fall within specified chromosome pairs.
+This dictionary is used to filter orthologous pairs that fall within specified chromosome pairs. An example file is available for you. 
 
 ---
 
