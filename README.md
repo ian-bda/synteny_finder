@@ -1,6 +1,6 @@
 # Conserved Synteny Detection Pipeline
 
-This Python script automates the detection of **conserved synteny** between multiple species using their **GFF3 annotations**, **CDS FASTA files**, and a **chromosome mapping file**. It leverages the [JCVI toolkit](https://github.com/tanghaibao/jcvi), (https://github.com/tanghaibao/jcvi/wiki/Mcscan-(python-version)) to perform pairwise orthology detection and generates filtered synteny tables for defined chromosomes.
+This Python script automates the detection of **conserved synteny** between multiple species using their **GFF3 annotations**, **CDS FASTA files**, and a **chromosome mapping file**. It leverages the [JCVI toolkit](https://github.com/tanghaibao/jcvi) and [MCscan-python version](https://github.com/tanghaibao/jcvi/wiki/Mcscan-(python-version)) to perform pairwise orthology detection and generates filtered synteny tables for defined chromosomes.
 
 ## Directory Structure
 
