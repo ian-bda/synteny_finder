@@ -143,6 +143,8 @@ BRCA1   BRCA1B  972     chr1     123456   125000 chr2     112000   113400
 * You can manually inspect the `anchors/` directory for intermediate logs and alignment files.
 
 ---
+## Plotting
+* To create a large circular plot of conserved synteny of your chromosomal regions see: [synteny_rplot](https://github.com/ian-bda/synteny_rplot)
 
 Script developed by **Ian Birchler De Allende**
 Uses [JCVI Comparative Genomics toolkit](https://github.com/tanghaibao/jcvi) and [MCscan-python version](https://github.com/tanghaibao/jcvi/wiki/Mcscan-(python-version))
