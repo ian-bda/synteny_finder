@@ -19,7 +19,7 @@ synteny_work/
 
 ## Input Requirements
 
-Place the following files in the script's parent directory:
+Place the following files downloaded from [Ensembl](https://useast.ensembl.org/index.html) in the script's parent directory:
 
 ### 1. GFF Files
 
@@ -141,6 +141,19 @@ BRCA1   BRCA1B  972     chr1     123456   125000 chr2     112000   113400
 * If `.anchors` files are missing, the species may have poor LAST alignment or naming mismatches.
 * Ensure species names are consistent across GFF, CDS, and chromosome map.
 * You can manually inspect the `anchors/` directory for intermediate logs and alignment files.
+
+---
+## Refseq 
+
+* If chromosome level assemblies are not available on Ensembl, you can download cds and gff files from refseq instead.
+
+```
+python synteny_all_vs_all_refseq.py
+```
+or if you want to find conserved syntenic regions for whole genomic regions:
+```
+python synteny_all_vs_all_refseq_whole_genome.py
+```
 
 ---
 ## Plotting
