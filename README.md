@@ -150,7 +150,7 @@ BRCA1   BRCA1B  972     chr1     123456   125000 chr2     112000   113400
 ```
 python synteny_all_vs_all_refseq.py
 ```
-or if you want to find conserved syntenic regions for whole genomic regions:
+or if you want to find conserved syntenic regions for the whole genome:
 ```
 python synteny_all_vs_all_refseq_whole_genome.py
 ```
