@@ -147,8 +147,11 @@ BRCA1   BRCA1B  972     chr1     123456   125000 chr2     112000   113400
 
 * If chromosome level assemblies are not available on Ensembl, you can [download cds and gff files from refseq instead](https://github.com/ian-bda/refseq_download_cds_gff).
 
+Then run:
+
 ```
 python synteny_all_vs_all_refseq.py
+#note this uses a different chromosome_map.json format
 ```
 or if you want to find conserved syntenic regions for the whole genome:
 ```
