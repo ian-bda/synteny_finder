@@ -154,7 +154,7 @@ python synteny_all_vs_all_refseq.py
 ```
 * note this uses a different chromosome_map.json format
 
-or if you want to find conserved syntenic regions for the whole genome:
+or if you want to find conserved syntenic regions for the whole genome (does not use chromosome_map.json file):
 ```
 python synteny_all_vs_all_refseq_whole_genome.py
 ```
