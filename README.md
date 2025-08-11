@@ -143,7 +143,7 @@ BRCA1   BRCA1B  972     chr1     123456   125000 chr2     112000   113400
 * You can manually inspect the `anchors/` directory for intermediate logs and alignment files.
 
 ---
-## Refseq 
+# Refseq 
 
 * If chromosome level assemblies are not available on Ensembl, you can [download cds and gff files from refseq instead](https://github.com/ian-bda/refseq_download_cds_gff).
 
