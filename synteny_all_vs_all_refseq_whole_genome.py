@@ -5,14 +5,17 @@ import shutil
 import pandas as pd
 import gzip
 
+# Set matplotlib backend to avoid font issues
+import matplotlib
+matplotlib.use('Agg')
+
 # Set up working directories
 WORK_DIR = os.path.join(os.path.dirname(__file__), 'synteny_work')
 BEDS_DIR = os.path.join(WORK_DIR, 'beds')
 CDS_DIR = os.path.join(WORK_DIR, 'cds')
 ANCHORS_DIR = os.path.join(WORK_DIR, 'anchors')
 CSVS_DIR = os.path.join(WORK_DIR, 'csvs')
-FINAL_OUTPUT_DIR = os.path.join(CSVS_DIR, 'final_synteny_csvs')
-for d in [WORK_DIR, BEDS_DIR, CDS_DIR, ANCHORS_DIR, CSVS_DIR, FINAL_OUTPUT_DIR]:
+for d in [WORK_DIR, BEDS_DIR, CDS_DIR, ANCHORS_DIR, CSVS_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # Input directories
@@ -21,8 +24,10 @@ ORIG_CDS_DIR = os.path.join(os.path.dirname(__file__), 'cds_files')
 
 # Helper: Extract species name from RefSeq filename
 def extract_species_name(filename):
-    # Extract accession from filename (e.g., GCF_009829125.3_gobiidae.gff -> GCF_009829125.3)
-    return filename.split('_')[0] + '_' + filename.split('_')[1]
+    # Extract accession from filename (e.g., GCF_009829125.3_gobiidae.gff -> GCF_009829125_3)
+    # Replace dots with underscores to avoid jcvi confusion
+    base_name = filename.split('_')[0] + '_' + filename.split('_')[1]
+    return base_name.replace('.', '_')
 
 def gff_to_bed(gff_path, bed_path):
     subprocess.run([
@@ -36,10 +41,11 @@ def format_cds_fasta(cds_path, formatted_cds_path):
 
 def run_ortholog_search(species1, species2, bed1, bed2, cds1, cds2, anchors_dir):
     # Copy files to cwd with expected names for jcvi
-    bed1_target = f"{species1}_parsed.bed"
-    bed2_target = f"{species2}_parsed.bed"
-    cds1_target = f"{species1}_parsed.cds"
-    cds2_target = f"{species2}_parsed.cds"
+    # jcvi expects files named: species1.bed, species1.cds, species2.bed, species2.cds
+    bed1_target = f"{species1}.bed"
+    bed2_target = f"{species2}.bed"
+    cds1_target = f"{species1}.cds"
+    cds2_target = f"{species2}.cds"
     shutil.copyfile(bed1, bed1_target)
     shutil.copyfile(bed2, bed2_target)
     shutil.copyfile(cds1, cds1_target)
@@ -47,19 +53,19 @@ def run_ortholog_search(species1, species2, bed1, bed2, cds1, cds2, anchors_dir)
     anchors_path = None
     try:
         subprocess.run([
-            'python', '-m', 'jcvi.compara.catalog', 'ortholog', f'{species1}_parsed', f'{species2}_parsed', '--no_strip_names'
+            'python', '-m', 'jcvi.compara.catalog', 'ortholog', species1, species2, '--no_strip_names'
         ], check=True)
         # Check for anchors file in current directory first
-        anchors_file = f"{species1}_parsed.{species2}_parsed.anchors"
+        anchors_file = f"{species1}.{species2}.anchors"
         if not os.path.exists(anchors_file):
-            anchors_file = f"{species2}_parsed.{species1}_parsed.anchors"
+            anchors_file = f"{species2}.{species1}.anchors"
         if os.path.exists(anchors_file):
             anchors_path = anchors_file
         else:
             # If not found in current directory, check if it was moved to anchors_dir
-            anchors_file_in_dir = os.path.join(anchors_dir, f"{species1}_parsed.{species2}_parsed.anchors")
+            anchors_file_in_dir = os.path.join(anchors_dir, f"{species1}.{species2}.anchors")
             if not os.path.exists(anchors_file_in_dir):
-                anchors_file_in_dir = os.path.join(anchors_dir, f"{species2}_parsed.{species1}_parsed.anchors")
+                anchors_file_in_dir = os.path.join(anchors_dir, f"{species2}.{species1}.anchors")
             if os.path.exists(anchors_file_in_dir):
                 anchors_path = anchors_file_in_dir
             else:
@@ -124,42 +130,86 @@ def parse_anchors_to_csv(anchors_file, bed1_file, bed2_file, output_dir, id_to_n
     print(f"Saved synteny file: {output_file}")
     return output_file
 
-def save_final_synteny(parsed_csv, sp1, sp2, output_dir):
-    """Save the final synteny file to the output directory."""
-    df = pd.read_csv(parsed_csv, sep='\t')
-    
-    if df.empty:
-        print(f"Warning: No synteny found for {sp1} vs {sp2}")
-        return None
-    
-    outname = os.path.join(output_dir, os.path.basename(parsed_csv))
-    df.to_csv(outname, sep='\t', index=False)
-    print(f"Saved whole-genome synteny file: {outname}")
-    print(f"  Found {len(df)} syntenic gene pairs between {sp1} and {sp2}")
-    return outname
-
-def normalize_bed_ids(bed_path):
-    tmp_path = bed_path + ".tmp"
-    with open(bed_path) as infile, open(tmp_path, "w") as outfile:
-        for line in infile:
-            fields = line.rstrip().split('\t')
-            if len(fields) >= 4:
-                # Remove 'transcript:' prefix and version number
-                fields[3] = fields[3].replace('transcript:', '').split('.')[0]
-            outfile.write('\t'.join(fields) + '\n')
-    os.replace(tmp_path, bed_path)
-
-def normalize_cds_ids(cds_path):
+def normalize_cds_ids(cds_path, gff_path):
+    """Normalize CDS IDs by extracting locus_tag or gene from headers for all annotation types."""
+    # First, try to extract locus_tag or gene directly from CDS headers
     tmp_path = cds_path + ".tmp"
+    replaced_count = 0
+    total_count = 0
+    
     with open(cds_path) as infile, open(tmp_path, "w") as outfile:
         for line in infile:
             if line.startswith('>'):
-                gene_id = line[1:].split()[0].split('.')[0]
+                total_count += 1
+                # Try to extract locus_tag first (Genbank annotation)
+                locus_match = re.search(r'\[locus_tag=([^\]]+)\]', line)
+                if locus_match:
+                    gene_id = locus_match.group(1)
+                    replaced_count += 1
+                else:
+                    # Fallback to gene attribute (Gnomon annotation)
+                    gene_match = re.search(r'\[gene=([^\]]+)\]', line)
+                    if gene_match:
+                        gene_id = gene_match.group(1)
+                        replaced_count += 1
+                    else:
+                        # Final fallback: use the first part of the ID
+                        gene_id = line[1:].split()[0].split('_')[0]
+                
                 rest = ' '.join(line[1:].split()[1:])
                 outfile.write(f'>{gene_id} {rest}\n' if rest else f'>{gene_id}\n')
             else:
                 outfile.write(line)
+    
     os.replace(tmp_path, cds_path)
+    print(f"  Replaced {replaced_count} out of {total_count} IDs with gene identifiers")
+
+def normalize_bed_ids(bed_path, gff_path):
+    """Normalize BED IDs using locus_tag, gene name, or gene ID from original GFF for RefSeq files."""
+    # First, build a mapping from mRNA ID to gene identifier from the original GFF
+    id_to_gene = {}
+    with open(gff_path) as f:
+        for line in f:
+            if line.startswith('#'):
+                continue
+            fields = line.strip().split('\t')
+            if len(fields) < 9:
+                continue
+            if fields[2] == 'mRNA':
+                # Extract mRNA ID and gene identifier
+                attrs = fields[8]
+                mrna_id_match = re.search(r'ID=([^;]+)', attrs)
+                
+                # Try locus_tag first (Genbank annotation)
+                gene_match = re.search(r'locus_tag=([^;]+)', attrs)
+                if not gene_match:
+                    # Fallback to gene attribute (Gnomon annotation)
+                    gene_match = re.search(r'gene=([^;]+)', attrs)
+                
+                if mrna_id_match and gene_match:
+                    mrna_id = mrna_id_match.group(1)
+                    gene_id = gene_match.group(1)
+                    id_to_gene[mrna_id] = gene_id
+    
+    print(f"  Found {len(id_to_gene)} mRNA to gene mappings")
+    
+    # Now normalize the BED file using this mapping
+    tmp_path = bed_path + ".tmp"
+    replaced_count = 0
+    with open(bed_path) as infile, open(tmp_path, "w") as outfile:
+        for line in infile:
+            fields = line.rstrip().split('\t')
+            if len(fields) >= 4:
+                # Replace the mRNA ID with the gene identifier
+                if fields[3] in id_to_gene:
+                    fields[3] = id_to_gene[fields[3]]
+                    replaced_count += 1
+                else:
+                    # Fallback: try to extract a simpler ID
+                    fields[3] = fields[3].split('|')[-1] if '|' in fields[3] else fields[3]
+            outfile.write('\t'.join(fields) + '\n')
+    os.replace(tmp_path, bed_path)
+    print(f"  Replaced {replaced_count} IDs with gene identifiers")
 
 def check_bed_cds_overlap(bed_path, cds_path, species):
     bed_ids = set()
@@ -175,6 +225,9 @@ def check_bed_cds_overlap(bed_path, cds_path, species):
                 cds_ids.add(line[1:].split()[0])
     overlap = bed_ids & cds_ids
     print(f"[ID CHECK] {species}: BED IDs: {len(bed_ids)}, CDS IDs: {len(cds_ids)}, Overlap: {len(overlap)}")
+    if overlap == 0 and len(bed_ids) > 0 and len(cds_ids) > 0:
+        print(f"  WARNING: No ID overlap! Sample BED IDs: {list(bed_ids)[:3]}")
+        print(f"  Sample CDS IDs: {list(cds_ids)[:3]}")
 
 if __name__ == '__main__':
     # 1. Find all GFF and CDS files, match by species
@@ -217,11 +270,11 @@ if __name__ == '__main__':
         
         if not os.path.exists(bed):
             gff_to_bed(info['gff'], bed)
-        normalize_bed_ids(bed)
+        normalize_bed_ids(bed, info['gff'])
         
         if not os.path.exists(formatted_cds):
             format_cds_fasta(info['cds'], formatted_cds)
-        normalize_cds_ids(formatted_cds)
+        normalize_cds_ids(formatted_cds, info['gff'])
         
         check_bed_cds_overlap(bed, formatted_cds, species)
         info['bed'] = bed
@@ -247,8 +300,8 @@ if __name__ == '__main__':
             os.makedirs(pair_dir, exist_ok=True)
             
             base_patterns = [
-                f"{sp1}_parsed.{sp2}_parsed",
-                f"{sp2}_parsed.{sp1}_parsed"
+                f"{sp1}.{sp2}",
+                f"{sp2}.{sp1}"
             ]
             for pat in base_patterns:
                 for ext in [".last", ".last.filtered", ".anchors", ".pdf", ".lifted.anchors"]:
@@ -257,9 +310,9 @@ if __name__ == '__main__':
                         shutil.move(fname, os.path.join(pair_dir, fname))
             
             # Check if anchors file exists in the pair-specific subdirectory
-            anchors_file_in_pair = os.path.join(pair_dir, f"{sp1}_parsed.{sp2}_parsed.anchors")
+            anchors_file_in_pair = os.path.join(pair_dir, f"{sp1}.{sp2}.anchors")
             if not os.path.exists(anchors_file_in_pair):
-                anchors_file_in_pair = os.path.join(pair_dir, f"{sp2}_parsed.{sp1}_parsed.anchors")
+                anchors_file_in_pair = os.path.join(pair_dir, f"{sp2}.{sp1}.anchors")
             
             if os.path.exists(anchors_file_in_pair):
                 # Parse the anchors file from the pair directory
@@ -271,8 +324,6 @@ if __name__ == '__main__':
                     id_to_name_map[sp1],
                     id_to_name_map[sp2]
                 )
-                # Save final synteny file (whole genome)
-                save_final_synteny(parsed_csv, sp1, sp2, FINAL_OUTPUT_DIR)
                 print(f"Successfully processed {sp1} vs {sp2}")
             else:
                 print(f"Warning: No anchors file found for {sp1} vs {sp2}")
