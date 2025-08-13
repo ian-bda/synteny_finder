@@ -20,15 +20,63 @@ for d in [WORK_DIR, BEDS_DIR, CDS_DIR, ANCHORS_DIR, CSVS_DIR, FINAL_OUTPUT_DIR]:
 GFF_DIR = os.path.join(os.path.dirname(__file__), 'gff_files')
 ORIG_CDS_DIR = os.path.join(os.path.dirname(__file__), 'cds_files')
 
-# Helper: Extract species name from RefSeq filename (accession number)
+# Helper: Extract species name from GFF filename (before first dot)
 def extract_species_name(gff_filename):
-    # Extract accession from filename (e.g., GCF_009829125.3_gobiidae.gff -> GCF_009829125.3)
-    return gff_filename.split('_')[0] + '_' + gff_filename.split('_')[1]
+    return gff_filename.split('.')[0]
 
 def gff_to_bed(gff_path, bed_path):
+    # Smart key selection based on GFF content
+    # First check if 'gene' field exists and has meaningful values
+    if has_gene_field(gff_path):
+        try:
+            subprocess.run([
+                'python', '-m', 'jcvi.formats.gff', 'bed', '--type=mRNA', '--key=gene', gff_path, '-o', bed_path
+            ], check=True)
+            return
+        except subprocess.CalledProcessError:
+            pass
+    
+    # Try locus_tag if gene field doesn't work
+    if has_locus_tag_field(gff_path):
+        try:
+            subprocess.run([
+                'python', '-m', 'jcvi.formats.gff', 'bed', '--type=mRNA', '--key=locus_tag', gff_path, '-o', bed_path
+            ], check=True)
+            return
+        except subprocess.CalledProcessError:
+            pass
+    
+    # Final fallback to ID
     subprocess.run([
         'python', '-m', 'jcvi.formats.gff', 'bed', '--type=mRNA', '--key=ID', gff_path, '-o', bed_path
     ], check=True)
+
+def has_gene_field(gff_path):
+    """Check if GFF has meaningful gene field values"""
+    open_func = gzip.open if gff_path.endswith('.gz') else open
+    with open_func(gff_path, 'rt') as f:
+        for line in f:
+            if line.startswith('#'):
+                continue
+            # Check if gene field has actual gene names, not just empty or generic values
+            gene_match = re.search(r'gene=([^;\s]+)', line)
+            if gene_match and gene_match.group(1) and gene_match.group(1) != '.':
+                # Skip mitochondrial genes and other non-standard identifiers
+                gene_name = gene_match.group(1)
+                if not gene_name.startswith(('ND', 'COX', 'ATP', 'CYTB', 'MT-', 'MT')):
+                    return True
+    return False
+
+def has_locus_tag_field(gff_path):
+    """Check if GFF has locus_tag field"""
+    open_func = gzip.open if gff_path.endswith('.gz') else open
+    with open_func(gff_path, 'rt') as f:
+        for line in f:
+            if line.startswith('#'):
+                continue
+            if 'locus_tag=' in line:
+                return True
+    return False
 
 def format_cds_fasta(cds_path, formatted_cds_path):
     subprocess.run([
@@ -55,7 +103,7 @@ def run_ortholog_search(species1, species2, bed1, bed2, cds1, cds2, anchors_dir)
         if not os.path.exists(anchors_file):
             anchors_file = f"{species2}_parsed.{species1}_parsed.anchors"
         if os.path.exists(anchors_file):
-            anchors_path = anchors_file
+            anchors_path = anchors_file  # Return the path to the file in current directory
         else:
             # If not found in current directory, check if it was moved to anchors_dir
             anchors_file_in_dir = os.path.join(anchors_dir, f"{species1}_parsed.{species2}_parsed.anchors")
@@ -129,27 +177,13 @@ def filter_csv_by_chromosomes(parsed_csv, sp1, sp2, chrom_map, output_dir):
     df = pd.read_csv(parsed_csv, sep='\t')
     chrom1 = chrom_map.get(sp1)
     chrom2 = chrom_map.get(sp2)
-    
-    if not chrom1 or not chrom2:
-        print(f"Warning: No chromosome specified for {sp1} or {sp2}")
+    if chrom1 is None or chrom2 is None:
+        print(f"Warning: No chromosome mapping for {sp1} or {sp2}")
         return None
-    
-    # Filter to only include specified chromosomes
-    filtered = df[
-        (df['chrom1'].astype(str) == str(chrom1)) & 
-        (df['chrom2'].astype(str) == str(chrom2))
-    ]
-    
-    if filtered.empty:
-        print(f"Warning: No synteny found on specified chromosomes for {sp1} vs {sp2}")
-        return None
-    
+    filtered = df[(df['chrom1'].astype(str) == str(chrom1)) & (df['chrom2'].astype(str) == str(chrom2))]
     outname = os.path.join(output_dir, os.path.basename(parsed_csv))
     filtered.to_csv(outname, sep='\t', index=False)
-    print(f"Filtered synteny file (specified chromosomes only): {outname}")
-    print(f"  {sp1} chromosome: {chrom1}")
-    print(f"  {sp2} chromosome: {chrom2}")
-    print(f"  Found {len(filtered)} syntenic gene pairs")
+    print(f"Filtered synteny file: {outname}")
     return outname
 
 def normalize_bed_ids(bed_path):
@@ -158,8 +192,13 @@ def normalize_bed_ids(bed_path):
         for line in infile:
             fields = line.rstrip().split('\t')
             if len(fields) >= 4:
-                # Remove 'transcript:' prefix and version number
-                fields[3] = fields[3].replace('transcript:', '').split('.')[0]
+                # Extract the locus tag from the gene ID (e.g., rna-KC01_LOCUS1 -> KC01_LOCUS1)
+                gene_id = fields[3]
+                if 'rna-' in gene_id:
+                    gene_id = gene_id.replace('rna-', '')
+                elif 'transcript:' in gene_id:
+                    gene_id = gene_id.replace('transcript:', '').split('.')[0]
+                fields[3] = gene_id
             outfile.write('\t'.join(fields) + '\n')
     os.replace(tmp_path, bed_path)
 
@@ -168,8 +207,22 @@ def normalize_cds_ids(cds_path):
     with open(cds_path) as infile, open(tmp_path, "w") as outfile:
         for line in infile:
             if line.startswith('>'):
-                gene_id = line[1:].split()[0].split('.')[0]
-                rest = ' '.join(line[1:].split()[1:])
+                # Extract the gene name from the header
+                header = line[1:]
+                gene_match = re.search(r'\[gene=([^\]]+)\]', header)
+                if gene_match:
+                    gene_id = gene_match.group(1)
+                else:
+                    # Fallback: try locus_tag
+                    locus_match = re.search(r'\[locus_tag=([^\]]+)\]', header)
+                    if locus_match:
+                        gene_id = locus_match.group(1)
+                    else:
+                        # Final fallback: extract from the first part
+                        gene_id = header.split()[0].split('|')[-1].split('.')[0]
+                
+                # Keep the original header but replace the ID
+                rest = ' '.join(header.split()[1:])
                 outfile.write(f'>{gene_id} {rest}\n' if rest else f'>{gene_id}\n')
             else:
                 outfile.write(line)
@@ -197,13 +250,11 @@ if __name__ == '__main__':
 
     # 1. Find all GFF and CDS files, match by species
     gff_files = sorted([f for f in os.listdir(GFF_DIR) if f.endswith('.gff')])
-    cds_files = sorted([f for f in os.listdir(ORIG_CDS_DIR) if f.endswith('.fna')])
+    cds_files = sorted([f for f in os.listdir(ORIG_CDS_DIR) if f.endswith('_cds.fna')])
     species_info = {}
     id_to_name_map = {}
-    
     for gff in gff_files:
         species = extract_species_name(gff)
-        # Find corresponding CDS file by accession number
         cds = next((c for c in cds_files if species in c), None)
         if not cds:
             print(f"Warning: No CDS file found for {species}")
@@ -273,4 +324,4 @@ if __name__ == '__main__':
                 )
                 filter_csv_by_chromosomes(parsed_csv, sp1, sp2, chrom_map, FINAL_OUTPUT_DIR)
             else:
-                print(f"Warning: No anchors file found for {sp1} vs {sp2}")
+                print(f"Warning: No anchors file found for {sp1} vs {sp2}") 
