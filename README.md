@@ -145,23 +145,6 @@ BRCA1   BRCA1B  972     chr1     123456   125000 chr2     112000   113400
 * You can manually inspect the `anchors/` directory for intermediate logs and alignment files.
 
 ---
-# Refseq 
-
-* If chromosome level assemblies for your species of interest are not available on Ensembl, you can [download cds and gff files from refseq instead](https://github.com/ian-bda/refseq_download_cds_gff).
-
-Then run:
-
-```
-python synteny_all_vs_all_refseq.py
-```
-* note this uses a different chromosome_map.json format
-
-or if you want to find conserved syntenic regions for the whole genome (does not use chromosome_map.json file):
-```
-python synteny_all_vs_all_refseq_whole_genome.py
-```
-
----
 ## Plotting
 * To create a large circular plot of conserved synteny of your chromosomal regions see: [synteny_rplot](https://github.com/ian-bda/synteny_rplot)
 
