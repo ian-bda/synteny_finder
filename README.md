@@ -2,8 +2,6 @@
 
 This Python script automates the detection of **conserved synteny** between multiple species using their **GFF3 annotations** and **CDS FASTA files** from [Ensembl](https://useast.ensembl.org/index.html), and a **chromosome mapping file**. It leverages the [JCVI toolkit](https://github.com/tanghaibao/jcvi) and [MCscan-python version](https://github.com/tanghaibao/jcvi/wiki/Mcscan-(python-version)) to perform pairwise orthology detection and generates filtered synteny tables for defined chromosomes.
 
-If instead you are using cds and gff files from NCBI's Refseq Database please see the "RefSeq" Section below
-
 ## Directory Structure
 
 Upon execution, the script organizes intermediate and output files into the following directories:
